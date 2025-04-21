@@ -22,15 +22,18 @@ download_dir = os.path.expanduser('data')
 output_dir_s1 = os.path.expanduser('source1')
 files_to_extract_and_save = [
     'stations_metadata.csv',
-    'joint_data_2017-2023/PM10_1g_joint_2017-2023.csv'
+    'joint_data_2017-2023/C6H6_1g_joint_2017-2023.csv'
+    'joint_data_2017-2023/NO2_1g_joint_2017-2023.csv',
+    'joint_data_2017-2023/PM10_1g_joint_2017-2023.csv',
+    'joint_data_2017-2023/PM25_1g_joint_2017-2023.csv',
+    'joint_data_2017-2023/SO2_1g_joint_2017-2023.csv'
 ]
 cleanup_zip = True
-
-logger.info("Start downloading data from Source 1.")
-
 zip_file_name = None
 zip_file_path = None
 extracted_files_info = []
+
+logger.info(f"Start downloading data from Source 1: https://www.kaggle.com/datasets/{s1_source}")
 
 try:
     api = KaggleApi()
@@ -136,7 +139,6 @@ try:
         logger.error("Final status of extraction: ERROR")
         logger.error("Cannot extract and save chosen files.")
 
-
 except Exception as e:
     logger.critical(f"Critical error: {e}")
 
@@ -153,6 +155,7 @@ finally:
         except Exception as cleanup_err:
             logger.warning(
                 f"Failed to delete ZIP file: '{zip_file_path}' or directory: '{download_dir}': {cleanup_err}")
+
     logger.info("Process finished.")
     logger.removeHandler(file_handler)
     logger.removeHandler(console_handler)
