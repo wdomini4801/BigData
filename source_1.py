@@ -22,7 +22,7 @@ download_dir = os.path.expanduser('data')
 output_dir_s1 = os.path.expanduser('source1')
 files_to_extract_and_save = [
     'stations_metadata.csv',
-    'joint_data_2017-2023/C6H6_1g_joint_2017-2023.csv'
+    'joint_data_2017-2023/C6H6_1g_joint_2017-2023.csv',
     'joint_data_2017-2023/NO2_1g_joint_2017-2023.csv',
     'joint_data_2017-2023/PM10_1g_joint_2017-2023.csv',
     'joint_data_2017-2023/PM25_1g_joint_2017-2023.csv',
@@ -112,7 +112,9 @@ try:
         end_time = time.time()
         elapsed_time = end_time - start_time
         logger.info(f"Extraction finished in {elapsed_time:.2f} s.")
-        logger.info(f"Siccessfully extracted {extraction_successful_count} files.")
+        final_status = "SUCCESS" if extraction_failed_count == 0 else "FAILURE"
+        logger.info(f"Final status of extraction: {final_status}")
+        logger.info(f"Successfully extracted {extraction_successful_count} files.")
         if extraction_failed_count > 0:
             logger.warning(f"Failed to extract {extraction_failed_count} files.")
 
@@ -126,15 +128,12 @@ try:
 
     if extracted_files_info:
         total_size_bytes = sum(item['size'] for item in extracted_files_info)
-        total_size_kb = round(total_size_bytes / 1024, ndigits=2)
-        final_status = "SUCCESS" if extraction_failed_count == 0 else "FAILURE"
+        total_size_mb = total_size_bytes / (1024**2)
 
-        logger.info(f"Final status of extraction: {final_status}")
-        logger.info(f"Total size of extracted files: {total_size_kb} kB")
-        logger.info(f"Files saved in: '{output_dir_s1}'")
-        logger.info("Details:")
+        logger.info(f"Total size of extracted files: {total_size_mb:.2f} MB")
+        logger.info(f"Files saved in: '{output_dir_s1}':")
         for item in extracted_files_info:
-            logger.info(f"  - Path: {item['path']}, Size: {round(item['size'] / 1024, 2)} kB")
+            logger.info(f"  - Path: {item['path']}, Size: {item['size'] / (1024**2):.2f} MB")
     else:
         logger.error("Final status of extraction: ERROR")
         logger.error("Cannot extract and save chosen files.")
@@ -149,7 +148,7 @@ finally:
             os.remove(zip_file_path)
             logger.info("ZIP file deleted.")
             if not os.listdir(download_dir):
-                logger.info(f"Deleting empty directory: '{download_dir}'")
+                logger.info(f"Deleting empty directory: '{download_dir}'.")
                 os.rmdir(download_dir)
 
         except Exception as cleanup_err:
