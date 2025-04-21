@@ -4,6 +4,10 @@ import time
 import zipfile
 import shutil
 from kaggle.api.kaggle_api_extended import KaggleApi
+from hdfs import InsecureClient
+
+hdfs_url = 'http://localhost:9870'
+hdfs_base_target_path = '/source1'
 
 log_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 log_file = 'download.log'
@@ -59,12 +63,12 @@ try:
         elapsed_time = end_time - start_time
         zip_file_name = os.listdir(download_dir)[0]
         zip_file_path = os.path.join(download_dir, zip_file_name)
-        file_size = round(os.path.getsize(zip_file_path) / 1024, ndigits=2)
+        file_size = os.path.getsize(zip_file_path) / (1024**2)
 
         logger.info("Data downloaded.")
         logger.info("Status: SUCCESS")
         logger.info(f"Download time: {elapsed_time:.2f} s")
-        logger.info(f"Size: {file_size} kB")
+        logger.info(f"Size: {file_size:.2f} MB")
         logger.info(f"Saved as: {zip_file_name}")
 
     except Exception as e:
@@ -96,9 +100,9 @@ try:
                         with zip_ref.open(member_info) as source, open(target_path, "wb") as target:
                             shutil.copyfileobj(source, target)
 
-                        logger.info(f" - Extracted and saved: '{target_path}'")
+                        logger.info(f" - Extracted and saved: '{file_to_extract}'")
                         file_size = os.path.getsize(target_path)
-                        extracted_files_info.append({"path": target_path, "size": file_size})
+                        extracted_files_info.append({"name": file_to_extract, "path": target_path, "size": file_size})
                         extraction_successful_count += 1
 
                     except Exception as extract_err:
@@ -137,6 +141,53 @@ try:
     else:
         logger.error("Final status of extraction: ERROR")
         logger.error("Cannot extract and save chosen files.")
+
+    if extracted_files_info:
+        logger.info("Started uploading files to HDFS.")
+        start_time = time.time()
+        hdfs_upload_successful_count = 0
+        hdfs_upload_failed_count = 0
+        total_hdfs_size_bytes = 0
+
+        try:
+            logger.info(f"Connecting with HDFS: {hdfs_url}.")
+            hdfs_client = InsecureClient(hdfs_url)
+            logger.info("Connected with HDFS.")
+
+            try:
+                hdfs_client.makedirs(hdfs_base_target_path, permission='755')
+                logger.info(f"HDFS directory: '{hdfs_base_target_path}' created.")
+            except Exception as mkdir_err:
+                logger.warning(f"Error while creating HDFS directory: '{hdfs_base_target_path}': {mkdir_err}.")
+
+            for file_info in extracted_files_info:
+                file_path = file_info['path']
+                hdfs_target_file_path = os.path.join(hdfs_base_target_path, file_info['name'])
+
+                logger.info(f" - Uploading to HDFS: '{file_path}' -> '{hdfs_target_file_path}'")
+                try:
+                    hdfs_client.upload(hdfs_target_file_path, file_path, overwrite=True, n_threads=1)
+                    logger.info(f"   - Upload successful.")
+                    hdfs_upload_successful_count += 1
+                    total_hdfs_size_bytes += file_info['size']
+                except Exception as hdfs_err:
+                    logger.error(f"   - ERROR while uploading to HDFS: {hdfs_err}")
+                    hdfs_upload_failed_count += 1
+
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            logger.info(f"Uploading to HDFS finished in {elapsed_time:.2f} s.")
+            logger.info(f"Sucessfully uploaded {hdfs_upload_successful_count} files.")
+            if hdfs_upload_failed_count > 0:
+                logger.warning(f"Failed to upload {hdfs_upload_failed_count} files.")
+
+        except Exception as hdfs_conn_err:
+            logger.error(f"Critical upload error: {hdfs_conn_err}")
+            hdfs_upload_failed_count = len(extracted_files_info)
+            hdfs_upload_successful_count = 0
+
+    elif not extracted_files_info:
+        logger.warning("No extracted local files, upload to HDFS skipped.")
 
 except Exception as e:
     logger.critical(f"Critical error: {e}")
