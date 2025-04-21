@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-logger.info("Start downloading data from Kaggle.")
+logger.info("Start downloading data from Source 1.")
 
 try:
     api = KaggleApi()
@@ -23,7 +23,6 @@ try:
     logger.info("Authentication in Kaggle API successful.")
 
     dataset = 'wisekinder/poland-air-quality-monitoring-dataset-2017-2023'
-    file_name = 'stations_metadata.csv'
     output_dir = os.path.expanduser('data')
 
     try:
@@ -35,38 +34,28 @@ try:
     except OSError as e:
         logger.error(f"Cannot make output directory '{output_dir}': {e}")
 
-    target_file_path = os.path.join(output_dir, file_name)
-
-    logger.info(f"Started downloading file: '{file_name}' to: '{output_dir}'.")
+    logger.info(f"Started downloading files to: '{output_dir}'.")
     start_time = time.time()
-    download_success = False
     file_size = -1
 
     try:
-        api.dataset_download_file(dataset, file_name=file_name, path=output_dir)
+        api.dataset_download_files(dataset, path=output_dir, quiet=True)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        final_path = os.path.join(output_dir, os.listdir(output_dir)[0])
+        file_size = round(os.path.getsize(final_path) / 1024, ndigits=2)
 
-        if os.path.exists(target_file_path):
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            file_size = round(os.path.getsize(target_file_path) / 1024, ndigits=2)
-            download_success = True
-            logger.info(f"File '{file_name}' downloaded.")
-            logger.info(f"Status: SUCCESS")
-            logger.info(f"Download time: {elapsed_time:.2f} s")
-            logger.info(f"File size: {file_size} kB")
-            logger.info(f"Saved as: {target_file_path}")
-        else:
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            logger.error(f"File '{file_name}' not found in: '{target_file_path}'.")
-            logger.error(f"Status: ERROR (file do not exists)")
-            logger.error(f"Time: {elapsed_time:.2f} s")
+        logger.info("Data downloaded.")
+        logger.info("Status: SUCCESS")
+        logger.info(f"Download time: {elapsed_time:.2f} s")
+        logger.info(f"Size: {file_size} kB")
+        logger.info(f"Saved as: {final_path}")
 
     except Exception as e:
         end_time = time.time()
         elapsed_time = end_time - start_time
-        logger.error(f"Error while downloading: '{file_name}'.")
-        logger.error(f"Status: ERROR")
+        logger.error("Error while downloading.")
+        logger.error("Status: ERROR")
         logger.error(f"Time till error: {elapsed_time:.2f} s")
         logger.error(f"Info: {e}")
 
