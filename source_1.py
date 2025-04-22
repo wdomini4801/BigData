@@ -4,13 +4,10 @@ import time
 import zipfile
 import shutil
 from kaggle.api.kaggle_api_extended import KaggleApi
-from hdfs import InsecureClient
-
-hdfs_url = 'http://localhost:9870'
-hdfs_base_target_path = '/source1'
+import subprocess
 
 log_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-log_file = 'download.log'
+log_file = 'source1.log'
 file_handler = logging.FileHandler(log_file, mode='a')
 file_handler.setFormatter(log_formatter)
 console_handler = logging.StreamHandler()
@@ -20,6 +17,11 @@ logger = logging.getLogger('Logger')
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+local_source_dir = "source1"
+container_name = "master"
+staging_dir_in_container = "/tmp/staging_data"
+hdfs_target_dir = "/source1"
 
 s1_source = 'wisekinder/poland-air-quality-monitoring-dataset-2017-2023'
 download_dir = os.path.expanduser('data')
@@ -32,7 +34,6 @@ files_to_extract_and_save = [
     'joint_data_2017-2023/PM25_1g_joint_2017-2023.csv',
     'joint_data_2017-2023/SO2_1g_joint_2017-2023.csv'
 ]
-cleanup_zip = True
 zip_file_name = None
 zip_file_path = None
 extracted_files_info = []
@@ -143,70 +144,84 @@ try:
         logger.error("Cannot extract and save chosen files.")
 
     if extracted_files_info:
-        logger.info("Started uploading files to HDFS.")
-        start_time = time.time()
-        hdfs_upload_successful_count = 0
-        hdfs_upload_failed_count = 0
-        total_hdfs_size_bytes = 0
+        logger.info("Start uploading data to HDFS.")
 
-        try:
-            logger.info(f"Connecting with HDFS: {hdfs_url}.")
-            hdfs_client = InsecureClient(hdfs_url)
-            logger.info("Connected with HDFS.")
+        if not os.path.isdir(local_source_dir):
+            logger.error(f"Local directory: '{local_source_dir}' not found!")
+
+        commands = [
+            {
+                "description": "Creating target directory in HDFS.",
+                "command": ['docker', 'exec', container_name, 'hdfs', 'dfs', '-mkdir', '-p', hdfs_target_dir]
+            },
+            {
+                "description": "Copying files to master node.",
+                "command": ['docker', 'cp', f'{local_source_dir}/.', f'{container_name}:{staging_dir_in_container}/']
+            },
+            {
+                "description": "Uploading files to HDFS.",
+                "command": ['docker', 'exec', container_name, 'sh', '-c', f'hdfs dfs -put -f {staging_dir_in_container}/* {hdfs_target_dir}/']
+            }
+        ]
+
+        for cmd_info in commands:
+            description = cmd_info["description"]
+            command_list = cmd_info["command"]
+            command_str = ' '.join(command_list)
+            success = False
+
+            logger.info(description)
+            start_time = time.time()
 
             try:
-                hdfs_client.makedirs(hdfs_base_target_path, permission='755')
-                logger.info(f"HDFS directory: '{hdfs_base_target_path}' created.")
-            except Exception as mkdir_err:
-                logger.warning(f"Error while creating HDFS directory: '{hdfs_base_target_path}': {mkdir_err}.")
+                result = subprocess.run(command_list,
+                                        capture_output=True,
+                                        text=True,
+                                        check=True,
+                                        encoding='utf-8')
 
-            for file_info in extracted_files_info:
-                file_path = file_info['path']
-                hdfs_target_file_path = os.path.join(hdfs_base_target_path, file_info['name'])
+                elapsed_time = time.time() - start_time
+                logger.info("Status: SUCCESS")
+                logger.info(f"Time: {elapsed_time:.2f} s")
+                if result.stdout.strip():
+                    logger.debug(f"stdout:\n{result.stdout.strip()}")
+                if result.stderr.strip():
+                    logger.info(f"stderr:\n{result.stderr.strip()}")
+                success = True
 
-                logger.info(f" - Uploading to HDFS: '{file_path}' -> '{hdfs_target_file_path}'")
-                try:
-                    hdfs_client.upload(hdfs_target_file_path, file_path, overwrite=True, n_threads=1)
-                    logger.info(f"   - Upload successful.")
-                    hdfs_upload_successful_count += 1
-                    total_hdfs_size_bytes += file_info['size']
-                except Exception as hdfs_err:
-                    logger.error(f"   - ERROR while uploading to HDFS: {hdfs_err}")
-                    hdfs_upload_failed_count += 1
+            except subprocess.CalledProcessError as e:
+                elapsed_time = time.time() - start_time
+                logger.error(f"Error executing: {description}")
+                logger.error("Status: ERROR")
+                logger.error(f"Time till error: {elapsed_time:.2f} s")
+                if e.stdout.strip():
+                    logger.error(f"stdout:\n{e.stdout.strip()}")
+                if e.stderr.strip():
+                    logger.error(f"stderr:\n{e.stderr.strip()}")
 
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            logger.info(f"Uploading to HDFS finished in {elapsed_time:.2f} s.")
-            logger.info(f"Sucessfully uploaded {hdfs_upload_successful_count} files.")
-            if hdfs_upload_failed_count > 0:
-                logger.warning(f"Failed to upload {hdfs_upload_failed_count} files.")
+            except FileNotFoundError:
+                logger.error("Error: Command 'docker' not found.")
+                logger.error("Status: ERROR")
+                break
 
-        except Exception as hdfs_conn_err:
-            logger.error(f"Critical upload error: {hdfs_conn_err}")
-            hdfs_upload_failed_count = len(extracted_files_info)
-            hdfs_upload_successful_count = 0
-
-    elif not extracted_files_info:
-        logger.warning("No extracted local files, upload to HDFS skipped.")
+            if not success:
+                logger.warning("Process not finished.")
+                break
 
 except Exception as e:
     logger.critical(f"Critical error: {e}")
 
 finally:
-    if cleanup_zip and zip_file_path and os.path.exists(zip_file_path):
+    if zip_file_path and os.path.exists(zip_file_path):
         try:
-            logger.info(f"Deleting downloaded ZIP file: '{zip_file_name}'")
+            logger.info("Cleaning up.")
             os.remove(zip_file_path)
-            logger.info("ZIP file deleted.")
             if not os.listdir(download_dir):
-                logger.info(f"Deleting empty directory: '{download_dir}'.")
                 os.rmdir(download_dir)
-
         except Exception as cleanup_err:
-            logger.warning(
-                f"Failed to delete ZIP file: '{zip_file_path}' or directory: '{download_dir}': {cleanup_err}")
+            logger.warning("Cleaning up failed. No permission for deleting files and directories.")
 
-    logger.info("Process finished.")
+    logger.info("Downloading and uploading data finished successfully.")
     logger.removeHandler(file_handler)
     logger.removeHandler(console_handler)
     file_handler.close()
