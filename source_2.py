@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 from scp import SCPClient
 from posixpath import join as posix_join
+import argparse
 
 # Configuration
 hadoop_config_path = './config/hadoop_config.json'
@@ -23,11 +24,6 @@ container_name = "master"
 remote_path = f"/home/{ssh_user}/uploads"
 staging_dir_in_container = "/tmp/staging_data"
 
-private_key_path = hadoop_config["private_key_path"]
-local_source_dir = "./output/2018"  # Directory with the files you want to upload
-hdfs_target_dir = "/user/hadoop/openmeteo/2018"  # HDFS target directory
-zip_filename = "openmeteo_data_2018.zip"  # Name for the zip file
-
 # Setup logging
 log_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 log_file = 'hadoop_upload.log'
@@ -40,6 +36,21 @@ logger = logging.getLogger('Logger')
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+# Input handling 
+parser = argparse.ArgumentParser(description="Get year from input.")
+parser.add_argument("year", type=int, help="The year to process")
+
+args = parser.parse_args()
+
+print(f"Sending measurements from {args.year}")
+year = args.year
+
+# File paths
+private_key_path = hadoop_config["private_key_path"]
+local_source_dir = f"./output/{year}"  # Directory with the files you want to upload
+hdfs_target_dir = f"/user/hadoop/openmeteo/{year}"  # HDFS target directory
+zip_filename = f"openmeteo_data_{year}.zip"  # Name for the zip file
 
 # SSH Client Setup
 def create_ssh_client(host, port, username, key_filepath):

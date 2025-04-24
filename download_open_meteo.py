@@ -2,11 +2,20 @@ import csv
 import requests
 import time
 import os
+import argparse
+
+# Input handling 
+parser = argparse.ArgumentParser(description="Get year from input.")
+parser.add_argument("year", type=int, help="The year to process")
+
+args = parser.parse_args()
+
+print(f"Sending measurements from {args.year}")
+year = args.year
 
 # Configuration
 input_file = './data/stations_lat_long.csv'
 base_output_dir = "./output"
-year = 2018
 output_dir = os.path.join(base_output_dir, str(year))
 os.makedirs(output_dir, exist_ok=True)
 
