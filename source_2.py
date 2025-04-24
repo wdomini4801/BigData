@@ -24,9 +24,9 @@ remote_path = f"/home/{ssh_user}/uploads"
 staging_dir_in_container = "/tmp/staging_data"
 
 private_key_path = hadoop_config["private_key_path"]
-local_source_dir = "./output/2017"  # Directory with the files you want to upload
-hdfs_target_dir = "/user/hadoop/openmeteo/2017"  # HDFS target directory
-zip_filename = "openmeteo_data_2017.zip"  # Name for the zip file
+local_source_dir = "./output/2018"  # Directory with the files you want to upload
+hdfs_target_dir = "/user/hadoop/openmeteo/2018"  # HDFS target directory
+zip_filename = "openmeteo_data_2018.zip"  # Name for the zip file
 
 # Setup logging
 log_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -131,6 +131,16 @@ def upload_to_hdfs(ssh_client, container_name, staging_dir_in_container, hdfs_ta
     
     # Execute SSH command to run the Docker HDFS upload command
     execute_ssh_command(ssh_client, upload_command)
+    
+def set_replication_factor(ssh_client, container_name, hdfs_target_dir, replication_factor=3):
+    setrep_command = (
+        f'sudo docker exec {container_name} sh -c '
+        f'"hdfs dfs -setrep -R -w {replication_factor} {hdfs_target_dir}"'
+    )
+
+    logger.info(f"Setting replication factor to {replication_factor} for HDFS path: {hdfs_target_dir}")
+    
+    execute_ssh_command(ssh_client, setrep_command)
 
 # Main process
 try:
@@ -157,6 +167,8 @@ try:
 
     # Step 6: Upload to HDFS
     upload_to_hdfs(ssh_client, container_name, staging_dir_in_container, hdfs_target_dir)
+    
+    set_replication_factor(ssh_client, container_name, hdfs_target_dir, 3)
     
 except Exception as e:
     logger.error(f"An error occurred: {e}")
