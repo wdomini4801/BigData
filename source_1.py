@@ -161,7 +161,11 @@ try:
             {
                 "description": "Uploading files to HDFS.",
                 "command": ['docker', 'exec', container_name, 'sh', '-c', f'hdfs dfs -put -f {staging_dir_in_container}/* {hdfs_target_dir}/']
-            }
+            },
+            {
+                "description": "Setting up replitacion factor for target directory.",
+                "command": ['docker', 'exec', container_name, 'hadoop', 'fs', '-setrep', '-R', '3', hdfs_target_dir]
+            },
         ]
 
         for cmd_info in commands:
