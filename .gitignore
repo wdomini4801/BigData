@@ -2,3 +2,5 @@ data
 output
 config
 *.log
+
+**/__pycache__
