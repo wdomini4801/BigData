@@ -104,15 +104,25 @@ def main():
                 stations_lat_lon_file, \
                 openmeteo_dir, \
                 year, \
-                280, \
+                10, \
                 logger
             )
             if not all_downloaded:
-                logger.error(f'Not all files downloaded! Waiting {fail_delay} seconds and retrying')
+                logger.warning(f'Rate limit! Waiting {fail_delay} seconds and retrying')
                 time.sleep(fail_delay)
 
     logger.info(green("Open Meteo files downloaded!\n"))
+    total_size = 0
+    file_count = 0
+    for dirpath, dirnames, filenames in os.walk(openmeteo_dir):
+        for f in filenames:
+            if f.endswith('.csv'):
+                fp = os.path.join(dirpath, f)
+                if os.path.isfile(fp):
+                    total_size += os.path.getsize(fp)
+                    file_count += 1
 
+    logger.info(f"Downloaded a total of {file_count} CSV files, totaling {total_size / (1024 ** 2):.2f} MB")
     # 5. Upload all the data into hadoop
     # 5.1 Upload kaggle
     kaggle_hdfs_target_dir = f"{hadoop_base_target}/kaggle"

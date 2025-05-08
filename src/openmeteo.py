@@ -41,7 +41,7 @@ def extract_lat_lon(pm10_file, metadata_file, output_file, logger):
       if not matched:
         logger.info(f"Warning: Cleaned StationID {cleaned_id} (from {original_id}) not found in metadata.")
 
-def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir, year, rate_limit, fail_limit=10, request_delay=0.2, logger=None):
+def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir, year, rate_limit, logger, fail_limit=10, request_delay=0.2):
   output_dir = os.path.join(base_output_dir, str(year))
   os.makedirs(output_dir, exist_ok=True)
 
@@ -100,7 +100,7 @@ def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir,
     except requests.RequestException as e:
       run_was_successful = False
       num_fails += 1
-      logger.error(f"Failed to fetch data for {station['OriginalID']}")
+      # logger.error(f"Failed to fetch data for {station['OriginalID']}")
       if num_fails >= fail_limit:
         return False
       
