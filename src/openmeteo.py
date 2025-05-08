@@ -4,7 +4,7 @@ import requests
 import time
 import os
 
-def extract_lat_lon(pm10_file, metadata_file, output_file):
+def extract_lat_lon(pm10_file, metadata_file, output_file, logger):
 
   # Extract cleaned station IDs from the PM10 header
   with open(pm10_file, 'r', encoding='utf-8') as f:
@@ -39,9 +39,9 @@ def extract_lat_lon(pm10_file, metadata_file, output_file):
           matched = True
           break
       if not matched:
-        print(f"Warning: Cleaned StationID {cleaned_id} (from {original_id}) not found in metadata.")
+        logger.info(f"Warning: Cleaned StationID {cleaned_id} (from {original_id}) not found in metadata.")
 
-def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir, year, rate_limit, fail_limit=10, request_delay=0.2):
+def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir, year, rate_limit, fail_limit=10, request_delay=0.2, logger=None):
   output_dir = os.path.join(base_output_dir, str(year))
   os.makedirs(output_dir, exist_ok=True)
 
@@ -84,7 +84,7 @@ def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir,
       continue
 
     if calls_made >= rate_limit:
-      print("Rate limit reached. Exiting.")
+      logger.warning("Rate limit reached. Exiting.")
       break
 
     url = create_request_url(year, api_base_url, timezone, data_params, station)
@@ -94,13 +94,13 @@ def download_open_meteo_yearly_measurements(stations_file_path, base_output_dir,
       response.raise_for_status()
       with open(os.path.join(output_dir, filename), 'w', encoding='utf-8') as f:
         f.write(response.text)
-      # print(f"Saved data for {station['OriginalID']}")
+      # logger.info(f"Saved data for {station['OriginalID']}")
       print(f"Skipped: {skipped_calls} Downloaded: {calls_made}/{rate_limit}", end='\r')
       time.sleep(request_delay)  # Small delay to avoid hitting rate limits
     except requests.RequestException as e:
       run_was_successful = False
       num_fails += 1
-      print(f"Failed to fetch data for {station['OriginalID']}")
+      logger.error(f"Failed to fetch data for {station['OriginalID']}")
       if num_fails >= fail_limit:
         return False
       
