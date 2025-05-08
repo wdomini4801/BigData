@@ -1,13 +1,43 @@
+import argparse
+import json
+from pathlib import Path
+
+from src.openmeteo import *
+from src.hadoop import *
+from src.utils import *
+
 # ===================================================
 #     This script runs on remote hadoop machine     #
 # ===================================================
-from src.openmeteo import *
-from pathlib import Path
+def execute_command_chain(commands):
+  for command in commands:
+    run_local_command(command)
 
-from src.utils import *
+def set_replication_factor(container_name, hdfs_target_dir):
+  command = set_replication_factor_command(container_name, hdfs_target_dir, 3)
+  run_local_command(command)
+
+def upload_to_hadoop(container_name, local_source_dir, hdfs_target_dir, staging_dir_in_container):
+  commands = [
+    create_hdfs_directory_command(container_name, hdfs_target_dir),
+    copy_files_to_docker_command(container_name, local_source_dir, staging_dir_in_container),
+    upload_to_hdfs_command(container_name, hdfs_target_dir, staging_dir_in_container),
+  ]
+  
+  execute_command_chain(commands)
+  
+def upload_yearly_openmeteo_data(year, openmeteo_dir, hdfs_target_dir, container_name, staging_dir_in_container):
+  local_source_dir = openmeteo_dir.joinpath(f"{year}")
+  
+  upload_to_hadoop(container_name, local_source_dir, hdfs_target_dir, staging_dir_in_container)
 
 def main():
   # 0. (Optional) Parse arguments
+  
+  # Processed scope
+  years = [2022]
+  
+  # Output directories
   base_output_dir = Path('./data')
   
   air_quality_kaggle_dir = base_output_dir.joinpath('air_quality_kaggle')
@@ -17,7 +47,10 @@ def main():
   stations_lat_lon_file = air_quality_kaggle_dir.joinpath('stations_lat_long.csv')
   openmeteo_dir = base_output_dir.joinpath('openmeteo')
   
-  years = [2021]
+  # Hadoop config
+  hadoop_base_target = '/user/hadoop'
+  container_name = "master"
+  staging_dir_in_container = "/tmp/staging_data"
   
   # 1. Download stations_metadata.csv
 
@@ -42,7 +75,7 @@ def main():
         stations_lat_lon_file, \
         openmeteo_dir, \
         year, \
-        130 # max calls per run
+        10 # max calls per run
       )
       if not all_downloaded:
         print_error(f'Not all files downloaded! Waiting {fail_delay} seconds and retrying')
@@ -51,6 +84,14 @@ def main():
   print_success("Open Meteo files downloaded!\n")
 
   # 5. Upload all the data into hadoop
+  
+  # 5.1 Upload openmeteo
+  openmeteo_hdfs_target_dir = f"{hadoop_base_target}/openmeteo/{year}"
+  for year in years:
+    upload_yearly_openmeteo_data(year, openmeteo_dir, openmeteo_hdfs_target_dir, container_name, staging_dir_in_container)
+    
+  for year in years:
+    set_replication_factor(container_name, openmeteo_hdfs_target_dir)
 
   # 6. Setup dynamic API data in hadoop
   pass
