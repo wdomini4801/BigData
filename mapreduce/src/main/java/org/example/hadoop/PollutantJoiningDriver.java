@@ -37,6 +37,7 @@ public class PollutantJoiningDriver {
 
         job.setOutputKeyClass(NullWritable.class);
         job.setOutputValueClass(Text.class);
+        job.setNumReduceTasks(3);
 
         FileInputFormat.addInputPath(job, new Path(pollutantsInputDir));
         FileOutputFormat.setOutputPath(job, new Path(outputDir));
