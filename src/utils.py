@@ -21,7 +21,6 @@ def run_local_command(command, logger):
   try:
     result = subprocess.run(command, shell=True, check=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    logger.info(result.stdout.decode())
   except subprocess.CalledProcessError as e:
-    logger.Error(f"Command failed: {e.cmd}")
+    logger.error(f"Command failed: {e.cmd}")
     logger.info(e.stderr.decode())

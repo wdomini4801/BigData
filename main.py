@@ -75,7 +75,7 @@ def main():
     openmeteo_dir = base_output_dir.joinpath('openmeteo')
 
     # Hadoop config
-    hadoop_base_target = '/user/hadoop'
+    hadoop_base_target = '/data'
     container_name = "master"
     staging_dir_in_container = "/tmp/staging_data"
 
@@ -92,7 +92,7 @@ def main():
         stations_lat_lon_file, \
         logger
         )
-    logger.info(green('Extracted!\n'))
+    logger.info('Files extracted')
 
     # 4. Accumulate Open Meteo API data for historical weather
     logger.info('Accumulating Open Meteo API readings')
@@ -111,7 +111,7 @@ def main():
                 logger.warning(f'Rate limit! Waiting {fail_delay} seconds and retrying')
                 time.sleep(fail_delay)
 
-    logger.info(green("Open Meteo files downloaded!\n"))
+    logger.info("Open Meteo files downloaded")
     total_size = 0
     file_count = 0
     for dirpath, dirnames, filenames in os.walk(openmeteo_dir):
@@ -148,6 +148,8 @@ def main():
 
     # 7. TODO Setup dynamic API data in hadoop
     pass
+
+    logger.info('Data acquisition finished successfully!')
 
 
 if __name__ == '__main__':
