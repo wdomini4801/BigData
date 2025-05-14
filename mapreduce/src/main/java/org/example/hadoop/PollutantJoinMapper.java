@@ -21,12 +21,13 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
     private Map<Integer, String> columnIndexToCleanStationID = new HashMap<>();
     private String currentPollutantType = "UNKNOWN";
     private boolean headerProcessed = false;
-    private static final String DELIMITER = ";";
+    private static final String METADATA_DELIMITER = ";";
+    private static final String POLLUTION_DELIMITER = ",";
     private static final String OUTPUT_DELIMITER = "\t"; // For the final output structure
     private static final String KEY_VALUE_SEPARATOR = "#KV#"; // Separator for key parts
     private static final String PAYLOAD_SEPARATOR = "#P#";   // Separator for payload parts
     private static final String POLLUTANT_VALUE_SEPARATOR = ":PV:"; // Separator for pollutant type and value
-    private Pattern stationIdPattern = Pattern.compile("^([^-]+)-(" + String.join("|", "C6H6", "NO2", "PM10", "PM25", "SO2") + ")-.*$");
+    private Pattern stationIdPattern = Pattern.compile("^([^-]+)-(" + String.join("|", "C6H6", "NO2", "PM10", "PM2.5", "SO2") + ")-.*$");
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
@@ -70,7 +71,7 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
                     isHeader = false;
                     continue; // Skip header line of metadata
                 }
-                String[] parts = line.split(DELIMITER, -1); // -1 to keep trailing empty strings
+                String[] parts = line.split(METADATA_DELIMITER, -1); // -1 to keep trailing empty strings
                 if (parts.length >= 15) { // Ensure enough columns
                     // Number;StationID;...;State;City;Address;lat;long;
                     // Indices: 0      1         10    11     12     13  14
@@ -95,78 +96,87 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
         context.getCounter("MapperCounters", "StationMetadataLoaded").increment(stationMetadataMap.size());
     }
 
-
-    @Override
     protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
         String line = value.toString();
         if (line == null || line.trim().isEmpty()) {
+            context.getCounter("MapperCounters", "EmptyLinesSkipped").increment(1);
             return; // Skip empty lines
         }
+        context.getCounter("MapperCounters", "NonEmptyLinesRead").increment(1);
 
-        String[] parts = line.split(DELIMITER, -1); // -1 to keep trailing empty strings
+        String[] parts = line.split(POLLUTION_DELIMITER, -1);
 
         if (!headerProcessed) {
             // This is the header row of the pollutant file
-            // First column is "czas" or similar, rest are StationIDs
-            for (int i = 1; i < parts.length; i++) { // Zaczynamy od 1, bo pierwsza kolumna to 'czas'
-                String rawColumnHeader = parts[i].trim();
-                Matcher matcher = stationIdPattern.matcher(rawColumnHeader);
-                if (matcher.matches()) {
-                    String cleanStationID = matcher.group(1); // Grupa 1 to StationID
-                    columnIndexToCleanStationID.put(i, cleanStationID);
-                    context.getCounter("MapperCounters", "HeaderStationIDExtracted_" + cleanStationID).increment(1);
-                } else {
-                    // Jeśli wzorzec nie pasuje, możemy zalogować/zliczyć lub zignorować tę kolumnę
-                    context.getCounter("MapperCounters", "HeaderColumnUnmatchedPattern_" + rawColumnHeader.replaceAll("[^A-Za-z0-9]", "_")).increment(1);
-                    System.err.println("MAPPER WARNING: Header column '" + rawColumnHeader + "' did not match expected pattern for file " + currentPollutantType);
+            if (parts.length > 1) {
+                for (int i = 1; i < parts.length; i++) { // PĘTLA NAGŁÓWKA
+                    String rawColumnHeader = parts[i].trim();
+                    Matcher matcher = stationIdPattern.matcher(rawColumnHeader);
+                    if (matcher.matches()) {
+                        String cleanStationID = matcher.group(1);
+                        columnIndexToCleanStationID.put(i, cleanStationID);
+                        context.getCounter("MapperCounters", "TotalHeaderStationIDsExtracted").increment(1);
+                    } else {
+                        context.getCounter("MapperCounters", "TotalHeaderColumnsUnmatchedPattern").increment(1);
+                        System.err.println("MAPPER WARNING: Header column '" + rawColumnHeader + "' did not match pattern for file " + currentPollutantType);
+                    }
                 }
-                headerProcessed = true;
-                context.getCounter("MapperCounters", "PollutantHeadersProcessed").increment(1);
-                return; // Don't process the header row as data
+            } else {
+                // Nagłówek nie ma oczekiwanej liczby części (np. tylko kolumna 'czas')
+                System.err.println("MAPPER WARNING: Header line for " + currentPollutantType + " seems malformed or has no station columns: " + line);
+                context.getCounter("MapperCounters", "MalformedHeaderLines").increment(1);
+            }
+            // Ustaw flagę i zlicz nagłówek PO zakończeniu pętli (lub sprawdzeniu)
+            headerProcessed = true;
+            context.getCounter("MapperCounters", "PollutantHeadersProcessedAttempted").increment(1);
+            System.out.println("MAPPER: Processed header for " + currentPollutantType + ". Mapped " + columnIndexToCleanStationID.size() + " clean station IDs.");
+            return; // Zakończ przetwarzanie dla linii nagłówka
+        }
+
+        // This is a data row
+        if (parts.length <= 1) {
+            context.getCounter("MapperCounters", "MalformedDataLines").increment(1);
+            if (context.getCounter("MapperCounters", "MalformedDataLines").getValue() <= 10) {
+                System.err.println("MAPPER MALFORMED DATA LINE (parts.length=" + parts.length + "): " + line);
+            }
+            return;
+        }
+
+        String time = parts[0].trim();
+
+        // Pętla przetwarzająca wartości pomiarów
+        for (int i = 1; i < parts.length; i++) {
+            context.getCounter("MapperCounters", "MeasurementValuesIterated").increment(1);
+            // ... reszta Twojej logiki dla linii danych ...
+            // (pobieranie cleanStationID, szukanie stationInfo, context.write)
+            String cleanStationID = columnIndexToCleanStationID.get(i);
+            if (cleanStationID == null || cleanStationID.isEmpty()) {
+                context.getCounter("MapperCounters", "StationIDFromHeaderMappingNullOrEmpty").increment(1);
+                // Loguj, która kolumna danych nie ma mapowania z nagłówka
+                if (context.getCounter("MapperCounters", "StationIDFromHeaderMappingNullOrEmpty").getValue() <= 10) {
+                    System.err.println("MAPPER DATA WARNING: No cleanStationID mapping for data column index " + i + " (header might have been shorter or unmatched). Line: " + line.substring(0, Math.min(line.length(), 100)) + "...");
+                }
+                continue;
             }
 
-            // This is a data row
-            if (parts.length <= 1) {
-                context.getCounter("MapperCounters", "MalformedDataLines").increment(1);
-                return;
+            String measurementValue = parts[i].trim();
+            if (measurementValue.isEmpty()) {
+                measurementValue = "NA";
             }
 
-            String time = parts[0].trim();
-
-            for (int i = 1; i < parts.length; i++) { // Iterate through pollutant values for each station
-                context.getCounter("MapperCounters", "MeasurementValuesIterated").increment(1);
-                String cleanStationID = columnIndexToCleanStationID.get(i);
-                if (cleanStationID == null || cleanStationID.isEmpty()) {
-                    // This can happen if header was shorter than data row, or malformed header
-                    context.getCounter("MapperCounters", "StationIDFromHeaderMappingNullOrEmpty").increment(1);
-                    continue;
-                }
-
-                String measurementValue = parts[i].trim();
-                if (measurementValue.isEmpty()) {
-                    measurementValue = "NA"; // Or skip, or use a specific null marker
-                }
-
-                StationInfo stationInfo = stationMetadataMap.get(cleanStationID);
-                if (stationInfo != null) {
-                    // Key: stationID#KV#Time (e.g., "DsWrocGrun#KV#2025-03-04T00:00")
-                    context.getCounter("MapperCounters", "StationInfoFound").increment(1);
-                    String outputKey = cleanStationID + KEY_VALUE_SEPARATOR + time;
-
-                    // Value: pollutantType:PV:measurementValue#P#lat#P#long#P#state#P#city
-                    // e.g., "PM10:PV:168.81#P#52.54833#P#13.407822#P#DOLNOŚLĄSKIE#P#Wrocław"
-                    String outputValue = currentPollutantType + POLLUTANT_VALUE_SEPARATOR + measurementValue +
-                            PAYLOAD_SEPARATOR + stationInfo.lat +
-                            PAYLOAD_SEPARATOR + stationInfo.lon +
-                            PAYLOAD_SEPARATOR + stationInfo.state +
-                            PAYLOAD_SEPARATOR + stationInfo.city;
-
-                    context.write(new Text(outputKey), new Text(outputValue));
-                    context.getCounter("MapperCounters", "MeasurementsEmitted").increment(1);
-                } else {
-                    context.getCounter("MapperCounters", "StationInfoNotFoundForCleanID_" + cleanStationID.replaceAll("[^A-Za-z0-9]", "_")).increment(1);
-                    context.getCounter("MapperCounters", "StationInfoNotFoundTotal").increment(1);
-                }
+            StationInfo stationInfo = stationMetadataMap.get(cleanStationID);
+            if (stationInfo != null) {
+                context.getCounter("MapperCounters", "StationInfoFound").increment(1);
+                String outputKey = cleanStationID + KEY_VALUE_SEPARATOR + time;
+                String outputValue = currentPollutantType + POLLUTANT_VALUE_SEPARATOR + measurementValue +
+                        PAYLOAD_SEPARATOR + stationInfo.lat +
+                        PAYLOAD_SEPARATOR + stationInfo.lon +
+                        PAYLOAD_SEPARATOR + stationInfo.state +
+                        PAYLOAD_SEPARATOR + stationInfo.city;
+                context.write(new Text(outputKey), new Text(outputValue));
+                context.getCounter("MapperCounters", "MeasurementsEmitted").increment(1);
+            } else {
+                context.getCounter("MapperCounters", "StationInfoNotFoundTotal").increment(1);
             }
         }
     }
