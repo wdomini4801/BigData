@@ -78,11 +78,22 @@ def main():
     hadoop_base_target = '/data'
     container_name = "master"
     staging_dir_in_container = "/tmp/staging_data"
+    staging_dir_kaggle = staging_dir_in_container + "/kaggle";
+    staging_dir_openmeteo = staging_dir_in_container + "/openmeteo"
 
     # 2. Download files from Kaggle
+    missing_files = []
 
-    download_files_from_kaggle(kaggle_dataset_url, files_to_download_from_kaggle, kaggle_temp_dir,
-                                air_quality_kaggle_dir, logger)
+    for file in files_to_download_from_kaggle:
+        file_path = air_quality_kaggle_dir.joinpath(file)
+        if not file_path.exists():
+            missing_files.append(file)
+            
+    if missing_files:
+        download_files_from_kaggle(kaggle_dataset_url, files_to_download_from_kaggle, kaggle_temp_dir,
+                                    air_quality_kaggle_dir, logger)
+    else:
+        logger.info("Kaggle files already downloaded!");
 
     # 3. Extract lat lon for relevant stations
     logger.info('Extracting lat and lon of stations')
@@ -128,13 +139,13 @@ def main():
     kaggle_hdfs_target_dir = f"{hadoop_base_target}/kaggle"
 
     logger.info('Uploading air quality data to hadoop...')
-    upload_kaggle_data(air_quality_kaggle_dir, kaggle_hdfs_target_dir, container_name, staging_dir_in_container)
+    upload_kaggle_data(air_quality_kaggle_dir, kaggle_hdfs_target_dir, container_name, staging_dir_kaggle)
     
     # 5.2 Upload openmeteo
     logger.info('Uploading weather data to hadoop...')
     for year in years:
         openmeteo_hdfs_target_dir = f"{hadoop_base_target}/openmeteo/{year}"
-        upload_yearly_openmeteo_data(year, openmeteo_dir, openmeteo_hdfs_target_dir, container_name, staging_dir_in_container)
+        upload_yearly_openmeteo_data(year, openmeteo_dir, openmeteo_hdfs_target_dir, container_name, staging_dir_openmeteo)
         
 
     # Kaggle replication factor
