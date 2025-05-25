@@ -1,4 +1,4 @@
-package org.example.hadoop;
+package org.example.hadoop.Models;
 
 import java.io.DataInput;
 import java.io.DataOutput;

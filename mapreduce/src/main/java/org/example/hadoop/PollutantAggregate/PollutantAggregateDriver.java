@@ -1,4 +1,4 @@
-package org.example.hadoop;
+package org.example.hadoop.PollutantAggregate;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -11,9 +11,9 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 import java.net.URI;
 
-public class PollutantJoiningDriver {
+public class PollutantAggregateDriver {
 
-    public static void main(String[] args) throws Exception {
+    public static int runJob(String[] args) throws Exception {
         Configuration conf = new Configuration();
         String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
         if (otherArgs.length < 3) {
@@ -27,7 +27,7 @@ public class PollutantJoiningDriver {
 
         Job job = Job.getInstance(conf, "Pollutant Data Join");
 
-        job.setJarByClass(PollutantJoiningDriver.class);
+        job.setJarByClass(PollutantAggregateDriver.class);
         job.setMapperClass(PollutantJoinMapper.class);
         // Combiner is not suitable here because we need all pollutant types for a key in the reducer.
         job.setReducerClass(PollutantAggregateReducer.class);
@@ -53,6 +53,6 @@ public class PollutantJoiningDriver {
             System.out.println("Deleted existing output directory: " + outputDir);
         }
 
-        System.exit(job.waitForCompletion(true) ? 0 : 1);
+        return job.waitForCompletion(true) ? 0 : 1;
     }
 }

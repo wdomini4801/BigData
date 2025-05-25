@@ -1,4 +1,4 @@
-package org.example.hadoop;
+package org.example.hadoop.PollutantAggregate;
 
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;

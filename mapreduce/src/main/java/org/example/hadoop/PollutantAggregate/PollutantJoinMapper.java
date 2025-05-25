@@ -1,10 +1,11 @@
-package org.example.hadoop;
+package org.example.hadoop.PollutantAggregate;
 
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.example.hadoop.Models.StationInfo;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
