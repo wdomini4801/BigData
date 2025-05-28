@@ -32,17 +32,21 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
 
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
+        context.getCounter("MapperCounters", "SanityCheck").increment(1);
         // Load station metadata from DistributedCache
         URI[] cacheFiles = context.getCacheFiles();
         if (cacheFiles != null && cacheFiles.length > 0) {
+            context.getCounter("MapperCounters", "CachedFiles").setValue(cacheFiles.length);
             for (URI cacheFile : cacheFiles) {
+                context.getCounter("MapperCounters", "CachedFiles" + cacheFile.getPath()).setValue(1);
                 // Assuming the symlink name or filename helps identify the metadata file
-                if (cacheFile.getPath().endsWith("stations-metadata.csv")) { // Adjust if using symlink
+                if (cacheFile.getPath().endsWith("stations_metadata.csv")) { // Adjust if using symlink
                     loadStationMetadata(new Path(cacheFile.getPath()), context);
                     break;
                 }
             }
         } else {
+            context.getCounter("MapperCounters", "MetadataFileNotFound").increment(1);
             throw new IOException("Station metadata file not found in DistributedCache.");
         }
 
@@ -55,6 +59,7 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
         else if (fileName.contains("PM25")) currentPollutantType = "PM25";
         else if (fileName.contains("SO2")) currentPollutantType = "SO2";
         else {
+            context.getCounter("MapperCounters", "CouldNotRead").increment(1);
             System.err.println("Warning: Could not determine pollutant type for file: " + fileName);
         }
         headerProcessed = false; // Reset for each new file split (though usually one mapper per split)
@@ -64,14 +69,17 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
     private void loadStationMetadata(Path filePath, Context context) throws IOException {
         BufferedReader reader = null;
         try {
+            context.getCounter("MapperCounters", "Reader1").increment(1);
             reader = new BufferedReader(new FileReader(filePath.toString()));
             String line;
             boolean isHeader = true;
             while ((line = reader.readLine()) != null) {
+                context.getCounter("MapperCounters", "Reader2").increment(1);
                 if (isHeader) {
                     isHeader = false;
                     continue; // Skip header line of metadata
                 }
+                context.getCounter("MapperCounters", "Reader3").increment(1);
                 String[] parts = line.split(METADATA_DELIMITER, -1); // -1 to keep trailing empty strings
                 if (parts.length >= 15) { // Ensure enough columns
                     // Number;StationID;...;State;City;Address;lat;long;
@@ -81,15 +89,20 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
                     String city = parts[11].trim();
                     String lat = parts[13].trim();
                     String lon = parts[14].trim();
-
+                    context.getCounter("MapperCounters", "Reader4").increment(1);
                     if (!stationID.isEmpty()) {
                         stationMetadataMap.put(stationID, new StationInfo(stationID, lat, lon, state, city));
                     }
                 } else {
+                    context.getCounter("MapperCounters", "MalformedMetadata").increment(1);
                     System.err.println("Skipping malformed metadata line: " + line);
                 }
             }
+        } catch (Exception e) {
+            context.getCounter("MapperCounters", "ReaderException").increment(1);
+            throw new RuntimeException(e);
         } finally {
+            context.getCounter("MapperCounters", "Reader1").increment(1);
             if (reader != null) {
                 reader.close();
             }
@@ -98,6 +111,7 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
     }
 
     protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+        context.getCounter("MapperCounters", "StationMetadataLoadedInMap").setValue(stationMetadataMap.size());
         String line = value.toString();
         if (line == null || line.trim().isEmpty()) {
             context.getCounter("MapperCounters", "EmptyLinesSkipped").increment(1);
