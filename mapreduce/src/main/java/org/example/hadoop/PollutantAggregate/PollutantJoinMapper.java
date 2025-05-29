@@ -8,9 +8,11 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.example.hadoop.Models.StationInfo;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -30,25 +32,26 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
     private static final String POLLUTANT_VALUE_SEPARATOR = ":PV:"; // Separator for pollutant type and value
     private Pattern stationIdPattern = Pattern.compile("^([^-]+)-(" + String.join("|", "C6H6", "NO2", "PM10", "PM2.5", "SO2") + ")-.*$");
 
+    public static String findStationsMetadata(URI[] cacheFiles) {
+        if (cacheFiles == null || cacheFiles.length == 0) {
+            throw new IllegalArgumentException("No cache files provided. Expected 'stations_metadata.csv' in DistributedCache.");
+        }
+
+        return Arrays.stream(cacheFiles)
+                .filter(uri -> uri.getPath().endsWith("stations_metadata.csv"))
+                .findFirst()
+                .map(URI::getPath)
+                .orElseThrow(() -> new IllegalArgumentException("'stations_metadata.csv' not found in DistributedCache."));
+    }
+
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
         context.getCounter("MapperCounters", "SanityCheck").increment(1);
         // Load station metadata from DistributedCache
         URI[] cacheFiles = context.getCacheFiles();
-        if (cacheFiles != null && cacheFiles.length > 0) {
-            context.getCounter("MapperCounters", "CachedFiles").setValue(cacheFiles.length);
-            for (URI cacheFile : cacheFiles) {
-                context.getCounter("MapperCounters", "CachedFiles" + cacheFile.getPath()).setValue(1);
-                // Assuming the symlink name or filename helps identify the metadata file
-                if (cacheFile.getPath().endsWith("stations_metadata.csv")) { // Adjust if using symlink
-                    loadStationMetadata(new Path(cacheFile.getPath()), context);
-                    break;
-                }
-            }
-        } else {
-            context.getCounter("MapperCounters", "MetadataFileNotFound").increment(1);
-            throw new IOException("Station metadata file not found in DistributedCache.");
-        }
+        String stationMetadataPath = findStationsMetadata(cacheFiles);
+
+        loadStationMetadata(new Path(stationMetadataPath), context);
 
         // Determine pollutant type from input file name
         FileSplit fileSplit = (FileSplit) context.getInputSplit();
@@ -69,17 +72,18 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
     private void loadStationMetadata(Path filePath, Context context) throws IOException {
         BufferedReader reader = null;
         try {
-            context.getCounter("MapperCounters", "Reader1").increment(1);
-            reader = new BufferedReader(new FileReader(filePath.toString()));
+            // Use only the local name — this works when using DistributedCache
+            File localFile = new File(filePath.getName());
+            reader = new BufferedReader(new FileReader(localFile));
+
             String line;
             boolean isHeader = true;
             while ((line = reader.readLine()) != null) {
-                context.getCounter("MapperCounters", "Reader2").increment(1);
                 if (isHeader) {
                     isHeader = false;
                     continue; // Skip header line of metadata
                 }
-                context.getCounter("MapperCounters", "Reader3").increment(1);
+
                 String[] parts = line.split(METADATA_DELIMITER, -1); // -1 to keep trailing empty strings
                 if (parts.length >= 15) { // Ensure enough columns
                     // Number;StationID;...;State;City;Address;lat;long;
@@ -89,7 +93,7 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
                     String city = parts[11].trim();
                     String lat = parts[13].trim();
                     String lon = parts[14].trim();
-                    context.getCounter("MapperCounters", "Reader4").increment(1);
+
                     if (!stationID.isEmpty()) {
                         stationMetadataMap.put(stationID, new StationInfo(stationID, lat, lon, state, city));
                     }
@@ -99,10 +103,8 @@ public class PollutantJoinMapper extends Mapper<LongWritable, Text, Text, Text> 
                 }
             }
         } catch (Exception e) {
-            context.getCounter("MapperCounters", "ReaderException").increment(1);
             throw new RuntimeException(e);
         } finally {
-            context.getCounter("MapperCounters", "Reader1").increment(1);
             if (reader != null) {
                 reader.close();
             }
