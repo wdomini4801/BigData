@@ -34,6 +34,7 @@ def set_replication_factor(container_name, hdfs_target_dir):
 
 def upload_to_hadoop(container_name, local_source_dir, hdfs_target_dir, staging_dir_in_container):
     commands = [
+        f"docker exec {container_name} mkdir -p {staging_dir_in_container}",
         create_hdfs_directory_command(container_name, hdfs_target_dir),
         copy_files_to_docker_command(container_name, local_source_dir, staging_dir_in_container),
         upload_to_hdfs_command(container_name, hdfs_target_dir, staging_dir_in_container),
@@ -76,7 +77,7 @@ def main():
 
     # Hadoop config
     hadoop_base_target = '/data'
-    container_name = "master"
+    container_name = "namenode"
     staging_dir_in_container = "/tmp/staging_data"
     staging_dir_kaggle = staging_dir_in_container + "/kaggle";
     staging_dir_openmeteo = staging_dir_in_container + "/openmeteo"

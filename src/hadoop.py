@@ -20,7 +20,7 @@ def upload_to_hdfs_command(container_name, hdfs_target_dir, staging_dir_in_conta
 def set_replication_factor_command(container_name, hdfs_target_dir, replication_factor=3):
   setrep_command = (
     f'docker exec {container_name} sh -c '
-    f'"hdfs dfs -setrep -R -w {replication_factor} {hdfs_target_dir}"'
+    f'"hdfs dfs -setrep -R {replication_factor} {hdfs_target_dir}"'
   )
   
   return setrep_command
