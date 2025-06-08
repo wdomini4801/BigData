@@ -1,22 +1,25 @@
 package org.example.hadoop.Aggregate2;
 
+import java.net.URI;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
+import org.example.hadoop.Aggregate2.Models.MeasurementData;
 
 public class PollutantAggregate2Driver {
+
   public static int runJob(String[] args) throws Exception {
     Configuration conf = new Configuration();
     String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
     if (otherArgs.length < 3) {
-      System.err
-          .println("Usage: PollutantAggregate2Driver <pollutants_input_dir> <metadata_file_hdfs_path> <output_dir>");
+      System.err.println("Usage: PollutantJoinDriver <pollutants_input_dir> <metadata_file_hdfs_path> <output_dir>");
       System.exit(2);
     }
 
@@ -29,47 +32,26 @@ public class PollutantAggregate2Driver {
     if (fs.exists(outputPath)) {
       fs.delete(outputPath, true);
     }
-    Path intermediatePath = new Path(outputDir + "_intermediate");
-    if (fs.exists(intermediatePath)) {
-      fs.delete(intermediatePath, true);
-    }
 
-    // Pass metadata file path to the job configuration
-    conf.set("metadata.file.path", metadataFileHdfsPath);
+    Job job = Job.getInstance(conf, "Join Pollutants with Station Metadata");
+    job.setJarByClass(PollutantAggregate2Driver.class);
 
-    // DEBUG: Set maximum records to process (comment out for production)
-    conf.setLong("debug.max.records", 300);
-    conf.set("mapreduce.reduce.memory.mb", "4096");
-    conf.set("mapreduce.reduce.java.opts", "-Xmx3072m");
+    job.setMapperClass(MeasurementMapper.class);
+    job.setReducerClass(JoinReducer.class);
 
-    // Job 1: Process and parse all input files
-    Job job1 = Job.getInstance(conf, "pollutant data processing");
-    job1.setJarByClass(PollutantAggregate2Driver.class);
-    job1.setMapperClass(AirQualityMapper.class);
-    job1.setReducerClass(AirQualityReducer.class);
-    job1.setOutputKeyClass(Text.class);
-    job1.setOutputValueClass(Text.class);
+    job.setMapOutputKeyClass(Text.class);
+    job.setMapOutputValueClass(MeasurementData.class);
 
-    // Add both pollutants directory and metadata file as inputs
-    FileInputFormat.addInputPath(job1, new Path(pollutantsInputDir));
-    FileInputFormat.addInputPath(job1, new Path(metadataFileHdfsPath));
-    FileOutputFormat.setOutputPath(job1, new Path(outputDir + "_intermediate"));
+    job.setOutputKeyClass(NullWritable.class);
+    job.setOutputValueClass(Text.class);
 
-    if (!job1.waitForCompletion(true)) {
-      return 1;
-    }
+    FileInputFormat.addInputPath(job, new Path(pollutantsInputDir));
+    FileOutputFormat.setOutputPath(job, outputPath);
 
-    // Job 2: Final aggregation
-    Job job2 = Job.getInstance(conf, "pollutant final aggregation");
-    job2.setJarByClass(PollutantAggregate2Driver.class);
-    job2.setMapperClass(KeyValueLineMapper.class);
-    job2.setReducerClass(FinalAggregationReducer.class);
-    job2.setOutputKeyClass(Text.class);
-    job2.setOutputValueClass(Text.class);
+    // Add metadata to distributed cache
+    job.addCacheFile(new URI(metadataFileHdfsPath + "#station_metadata.csv")); // Local symlink in mappers
 
-    FileInputFormat.addInputPath(job2, new Path(outputDir + "_intermediate"));
-    FileOutputFormat.setOutputPath(job2, new Path(outputDir));
+    return job.waitForCompletion(true) ? 0 : 1;
 
-    return job2.waitForCompletion(true) ? 0 : 1;
   }
 }
