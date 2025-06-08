@@ -28,7 +28,9 @@ def execute_command_chain(commands):
     for command in commands:
         run_local_command(command, logger)
 
-def set_replication_factor(container_name, hdfs_target_dir):
+def set_replication_factor(container_name, hdfs_target_dir, factor):
+    if factor <= 1:
+        return
     command = set_replication_factor_command(container_name, hdfs_target_dir, 3)
     run_local_command(command, logger)
 
@@ -54,6 +56,7 @@ def main():
     # 1. Inputs
     # Processed scope
     years = [2022]
+    replication_factor = 1
     
     # Output directories
     base_output_dir = Path('./data')
@@ -150,13 +153,17 @@ def main():
         
 
     # Kaggle replication factor
-    logger.info('Setting replication factor for air quality data...')
-    set_replication_factor(container_name, kaggle_hdfs_target_dir)
-    # Openmeteo replication factor
-    logger.info('Setting replication factor for OpenMeteo weather data...')
-    for year in years:
-        openmeteo_hdfs_target_dir = f"{hadoop_base_target}/openmeteo/{year}"
-        set_replication_factor(container_name, openmeteo_hdfs_target_dir)
+    
+    if replication_factor > 1:
+        logger.info('Setting replication factor for air quality data...')
+        set_replication_factor(container_name, kaggle_hdfs_target_dir, replication_factor)
+        # Openmeteo replication factor
+        logger.info('Setting replication factor for OpenMeteo weather data...')
+        for year in years:
+            openmeteo_hdfs_target_dir = f"{hadoop_base_target}/openmeteo/{year}"
+            set_replication_factor(container_name, openmeteo_hdfs_target_dir, replication_factor)
+    else:
+        logger.info('Replication factor is set to 1')
 
     # 7. TODO Setup dynamic API data in hadoop
     pass

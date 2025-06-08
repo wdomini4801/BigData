@@ -1,5 +1,6 @@
 package org.example;
 
+import org.example.hadoop.Aggregate2.PollutantAggregate2Driver;
 import org.example.hadoop.PollutantAggregate.PollutantAggregateDriver;
 import org.example.hadoop.WeatherPollutionJoin.WeatherJoinDriver;
 
@@ -25,6 +26,9 @@ public class App
         switch (jobName.toLowerCase()) {
             case "pollutant-aggregate":
                 exitCode = PollutantAggregateDriver.runJob(jobArgs);
+                break;
+            case "pollutant-aggregate-2":
+                exitCode = PollutantAggregate2Driver.runJob(jobArgs);
                 break;
             case "join-weather":
                 exitCode = WeatherJoinDriver.runJob(jobArgs);
