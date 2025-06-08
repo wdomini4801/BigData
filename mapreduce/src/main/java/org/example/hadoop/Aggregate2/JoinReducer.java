@@ -5,7 +5,9 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.fs.Path;
@@ -33,7 +35,7 @@ public class JoinReducer extends Reducer<Text, MeasurementData, NullWritable, Te
     for (URI uri : cacheFiles) {
       Path path = new Path("station_metadata.csv");
       try (BufferedReader br = new BufferedReader(new FileReader(path.toString()))) {
-        String line = br.readLine(); // Skip header
+        String line = br.readLine(); // skip header
         while ((line = br.readLine()) != null) {
           String[] fields = line.split(";");
           if (fields.length < 15) continue;
@@ -52,8 +54,11 @@ public class JoinReducer extends Reducer<Text, MeasurementData, NullWritable, Te
   @Override
   public void reduce(Text key, Iterable<MeasurementData> values, Context context)
       throws IOException, InterruptedException {
-    String stationId = key.toString();
 
+    // Group all records by (timestamp, stationId)
+    Map<String, Map<String, String>> pivoted = new HashMap<>();
+
+    String stationId = key.toString();
     StationMetadata metadata = null;
     for (String metaKey : stationMap.keySet()) {
       if (metaKey.contains(stationId)) {
@@ -68,16 +73,33 @@ public class JoinReducer extends Reducer<Text, MeasurementData, NullWritable, Te
     }
 
     for (MeasurementData md : values) {
-      String result = String.join(",",
-        md.getTimestamp(),
-        md.getStationId(),
-        md.getPollutantType(),
-        md.getValue(),
-        metadata.getLatitude(),
-        metadata.getLongitude(),
-        metadata.getInternationalStationId()
-      );
-      context.write(NullWritable.get(), new Text(result));
+      String timestamp = md.getTimestamp();
+      String pollutant = md.getPollutantType();
+      String value = md.getValue();
+
+      pivoted
+        .computeIfAbsent(timestamp, k -> new HashMap<>())
+        .put(pollutant, value);
+    }
+
+    for (Map.Entry<String, Map<String, String>> entry : pivoted.entrySet()) {
+      String timestamp = entry.getKey();
+      Map<String, String> pollutantMap = entry.getValue();
+
+      String[] pollutants = {"PM10", "PM25", "SO2", "NO2", "C6H6"};
+      List<String> row = new ArrayList<>();
+
+      row.add(timestamp);
+      row.add(stationId);
+      row.add(metadata.getInternationalStationId());
+      row.add(metadata.getLatitude());
+      row.add(metadata.getLongitude());
+
+      for (String pol : pollutants) {
+        row.add(pollutantMap.getOrDefault(pol, ""));
+      }
+
+      context.write(NullWritable.get(), new Text(String.join(",", row)));
       context.getCounter(CountersEnum.JOINED_RECORDS).increment(1);
     }
   }
