@@ -55,7 +55,7 @@ def upload_kaggle_data(kaggle_dir, hdfs_target_dir, container_name, staging_dir_
 def main():
     # 1. Inputs
     # Processed scope
-    years = [2022]
+    years = [2017]
     replication_factor = 1
     
     # Output directories
