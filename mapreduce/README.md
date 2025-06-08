@@ -19,3 +19,10 @@
    ```docker exec master hadoop jar [KATALOG_Z_JAR] /data/kaggle/joint_data_2017-2023 /data/kaggle/stations_metadata.csv /data/output/```
 
    Po wykonaniu logi pojawią się w terminalu. Rezultaty będą widoczne w HDFS w katalogu ``data/output`` - 3 pliki, z racji na dodane 3 Reducery (można to modyfikować w klasie ``PollutantJoiningDriver.java``).
+
+# Nowe uruchomienie map-reduce
+
+Przed argumentami job'a trzeba wpisać nazwę job'a. W App.java jest mapping do tego.
+```
+docker exec resourcemanager yarn jar /tmp/mapreduce-1.0-SNAPSHOT.jar pollutant-aggregate-2 /data/kaggle/joint_data_2017-2023 /data/kaggle/stations_metadata.csv /data/output/aggregated-pollution
+```
