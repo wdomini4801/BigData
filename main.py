@@ -56,7 +56,7 @@ def main():
     # 1. Inputs
     # Processed scope
     years = [2017]
-    replication_factor = 1
+    replication_factor = 3
     
     # Output directories
     base_output_dir = Path('./data')
