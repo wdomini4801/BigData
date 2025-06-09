@@ -22,7 +22,24 @@
 
 # Nowe uruchomienie map-reduce
 
+## Budowanie  i przesyłanie
+```
+mvn clean package
+```
+```
+docker cp .\target\mapreduce-1.0-SNAPSHOT.jar resourcemanager:/tmp/   
+```
+
+
 Przed argumentami job'a trzeba wpisać nazwę job'a. W App.java jest mapping do tego.
+
+
+## Job 1 - łączenie metadata i pomiarów zanieczyszczenia
 ```
 docker exec resourcemanager yarn jar /tmp/mapreduce-1.0-SNAPSHOT.jar pollutant-aggregate-2 /data/kaggle/joint_data_2017-2023 /data/kaggle/stations_metadata.csv /data/output/aggregated-pollution
+```
+
+## Job 2 - łączenie efektu poprzedniego z odczytami pogody w danej godzinie
+```
+docker exec resourcemanager yarn jar /tmp/mapreduce-1.0-SNAPSHOT.jar join-weather /data/output/aggregated-pollution /data/openmeteo/2017 /data/output/joined-weather
 ```
