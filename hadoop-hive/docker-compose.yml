@@ -1,0 +1,166 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    ports:
+      - "9870:9870"   # Web UI
+      - "9000:9000"   # HDFS
+    networks:
+      - hadoop
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data
+    ports:
+      - "9864:9864"
+    networks:
+      - hadoop
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    ports:
+      - "9865:9864"
+    networks:
+      - hadoop
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - hadoop_datanode3:/hadoop/dfs/data
+    ports:
+      - "9866:9864"
+    networks:
+      - hadoop
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9864 datanode3:9864"
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "8088:8088"  # YARN Web UI
+    networks:
+      - hadoop
+
+  nodemanager:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    ports:
+      - 8042:8042
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9864 datanode3:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+    networks:
+      - hadoop
+
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    ports:
+      - 8188:8188
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9864 datanode3:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+
+  metastore-postgres:
+    image: postgres:12
+    container_name: metastore-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - metastore_postgres:/var/lib/postgresql/data
+    networks:
+      - hadoop
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    restart: always
+    environment:
+      - HIVE_METASTORE_DB_TYPE=postgres
+      - HIVE_METASTORE_DB_HOST=metastore-postgres
+      - HIVE_METASTORE_DB_NAME=metastore
+      - HIVE_METASTORE_DB_USER=hive
+      - HIVE_METASTORE_DB_PASS=hive
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - ./hive-site.xml:/opt/hive/conf/hive-site.xml
+    ports:
+      - "9083:9083"  # Hive Metastore Thrift
+    depends_on:
+      - namenode
+      - metastore-postgres
+    networks:
+      - hadoop
+
+  hive-server:
+    image: bde2020/hive:2.3.2
+    container_name: hive-server
+    restart: always
+    environment:
+      - HIVE_METASTORE_URI=thrift://hive-metastore:9083
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - ./hive-site.xml:/opt/hive/conf/hive-site.xml
+    ports:
+      - "10000:10000"  # JDBC
+      - "10002:10002"  # CLI/WebHCat (optional)
+    depends_on:
+      - hive-metastore
+    networks:
+      - hadoop
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode1:
+  hadoop_datanode2:
+  hadoop_datanode3:
+  hadoop_historyserver:
+  metastore_postgres:
+
+networks:
+  hadoop:
+    driver: bridge
