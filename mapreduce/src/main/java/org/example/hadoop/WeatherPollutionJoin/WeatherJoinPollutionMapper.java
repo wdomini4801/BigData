@@ -1,12 +1,21 @@
 package org.example.hadoop.WeatherPollutionJoin;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 
 public class WeatherJoinPollutionMapper extends Mapper<LongWritable, Text, Text, Text> {
+
+  // FILTER CONFIG
+  private static final boolean RUN_ONLY_FILTER_ENABLED = true;
+  private static final Set<String> RUN_ONLY = new HashSet<>(Arrays.asList(
+    "DsJelGorOgin", "DsWrocWybCon", "KpBydPlPozna", "KpBydWarszaw", "LdLodzGdansk"
+  ));
 
   @Override
   public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -20,6 +29,10 @@ public class WeatherJoinPollutionMapper extends Mapper<LongWritable, Text, Text,
 
       String time = fields[0].substring(0, 13);  // yyyy-MM-ddTHH
       String stationId = fields[1];
+
+      // APPLY FILTER
+      if (RUN_ONLY_FILTER_ENABLED && !RUN_ONLY.contains(stationId)) return;
+
       String compositeKey = time + "|" + stationId;
 
       context.write(new Text(compositeKey), new Text("P|" + line));

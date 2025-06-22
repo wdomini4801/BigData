@@ -2,6 +2,9 @@ package org.example.hadoop.WeatherPollutionJoin;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -14,6 +17,12 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 public class WeatherJoinWeatherMapper extends Mapper<LongWritable, Text, Text, Text> {
   private String stationId = "";
 
+  // FILTER CONFIG
+  private static final boolean RUN_ONLY_FILTER_ENABLED = true;
+  private static final Set<String> RUN_ONLY = new HashSet<>(Arrays.asList(
+    "DsJelGorOgin", "DsWrocWybCon", "KpBydPlPozna", "KpBydWarszaw", "LdLodzGdansk"
+  ));
+
   @Override
   protected void setup(Context context) throws IOException, InterruptedException {
     FileSplit fileSplit = getFileSplit(context);
@@ -22,6 +31,11 @@ public class WeatherJoinWeatherMapper extends Mapper<LongWritable, Text, Text, T
     Matcher matcher = pattern.matcher(filename);
     if (matcher.find()) {
       stationId = matcher.group(1);
+    }
+
+    // APPLY FILTER RIGHT IN SETUP
+    if (RUN_ONLY_FILTER_ENABLED && !RUN_ONLY.contains(stationId)) {
+      stationId = ""; // Invalidate stationId so map() will auto-skip all lines
     }
   }
 
@@ -43,10 +57,9 @@ public class WeatherJoinWeatherMapper extends Mapper<LongWritable, Text, Text, T
       String time = fields[0].substring(0, 13); // Extract hour precision
       String compositeKey = time + "|" + stationId;
       context.write(new Text(compositeKey), new Text("W|" + value.toString()));
-    }  catch (Exception e) {
+    } catch (Exception e) {
       throw new Error("Error processing weather line: " + line);
     }
-    
   }
 
   private FileSplit getFileSplit(Mapper<LongWritable, Text, Text, Text>.Context context) throws IOException {
@@ -67,5 +80,4 @@ public class WeatherJoinWeatherMapper extends Mapper<LongWritable, Text, Text, T
 
     throw new IOException("Unsupported InputSplit type: " + split.getClass().getName());
   }
-
 }
