@@ -22,52 +22,58 @@ public class Main {
         Set<String> RUN_ONLY = new HashSet<>(Arrays.asList(
                 "DsJelGorOgin", "DsWrocWybCon", "KpBydPlPozna", "KpBydWarszaw", "LdLodzGdansk"));
 
-        // === 1. Load measurements ===
-        Dataset<Row> measurements = spark.read()
-                .option("header", "true")
-                .option("inferSchema", "false")
-                .csv(measurementPath);
+        // Load measurements - Process each pollutant file separately
+        List<String> pollutants = Arrays.asList("PM10", "PM25", "SO2", "NO2", "C6H6");
+        Dataset<Row> allMeasurements = null;
 
-        // === 2. Melt wide data into long format ===
-        // Convert all columns except timestamp into rows
+        for (String pollutant : pollutants) {
+            String filePath = measurementPath + pollutant + "_1g_joint_2017-2023.csv";
 
-        List<String> columns = new ArrayList<>(Arrays.asList(measurements.columns()));
-        columns.remove("Time");
+            Dataset<Row> df = spark.read()
+                    .option("header", "true")
+                    .option("inferSchema", "false") // Keep as strings initially
+                    .csv(filePath);
 
-        // Use stack to unpivot
-        StringBuilder expr = new StringBuilder();
-        expr.append("stack(").append(columns.size());
-        for (String col : columns) {
-            expr.append(", '").append(col).append("', ").append("`").append(col).append("`");
+            // Remove "Time" column from columns list to unpivot station columns only
+            List<String> columns = new ArrayList<>(Arrays.asList(df.columns()));
+            columns.remove("Time");
+
+            // Build stack expression to unpivot columns into (header, value)
+            StringBuilder expr = new StringBuilder();
+            expr.append("stack(").append(columns.size());
+            for (String col : columns) {
+                expr.append(", '").append(col).append("', `").append(col).append("`");
+            }
+            expr.append(") as (header, value)");
+
+            Dataset<Row> longDF = df.selectExpr("Time", expr.toString())
+                    .withColumn("value", col("value").cast(DataTypes.DoubleType))
+                    .filter(col("value").isNotNull()); // Remove null values
+
+            // Extract StationId from header (e.g., "DsJelGorOgin-C6H6-1g" -> "DsJelGorOgin")
+            Dataset<Row> parsedDF = longDF
+                    .withColumn("StationId", regexp_extract(col("header"), "^([^-]+)", 1))
+                    .withColumn("pollutant", lit(pollutant))
+                    .drop("header")
+                    .filter(col("StationId").isNotNull().and(col("StationId").notEqual("")));
+
+            if (allMeasurements == null) {
+                allMeasurements = parsedDF;
+            } else {
+                allMeasurements = allMeasurements.unionByName(parsedDF);
+            }
         }
-        expr.append(") as (header, value)");
 
-        Dataset<Row> longDF = measurements.selectExpr("Time", expr.toString())
-            .withColumn("value", col("value").cast(DataTypes.DoubleType));
-
-        // === 3. Extract StationId and pollutant from header ===
-        // Example: DsBoleslaMOB-PM10-1g → StationId: DsBoleslaMOB, pollutant: PM10
-
-        Dataset<Row> parsedDF = longDF
-                .withColumn("StationId", regexp_extract(col("header"), "^([^-]+)", 1))
-                .withColumn("pollutant", regexp_replace(
-                        regexp_extract(col("header"), "-([A-Za-z0-9]+)", 1),
-                        "\\d+g$", ""))
-                .drop("header");
-
-        // === 4. Filter by RUN_ONLY stations ===
-
+        // Filter for RUN_ONLY stations
         Column stationFilter = col("StationId").isin(RUN_ONLY.toArray());
-        Dataset<Row> filteredDF = parsedDF.filter(stationFilter);
+        Dataset<Row> filteredDF = allMeasurements.filter(stationFilter);
 
-        // === 5. Pivot to wide format again ===
-
+        // Pivot back to wide format by pollutant
         Dataset<Row> pivotedDF = filteredDF.groupBy("Time", "StationId")
-                .pivot("pollutant", Arrays.asList("PM10", "PM25", "SO2", "NO2", "C6H6"))
+                .pivot("pollutant", new ArrayList<Object>(pollutants))
                 .agg(first("value"));
 
-        // === 6. Load station metadata ===
-
+        // Load station metadata
         Dataset<Row> metadata = spark.read()
                 .option("header", "true")
                 .option("delimiter", ";")
@@ -78,13 +84,10 @@ public class Main {
                         col("lat").alias("Latitude"),
                         col("long").alias("Longitude"));
 
-        // === 7. Join metadata with pivoted measurements ===
-
-        // Note: partial station id match as in your reducer (contains logic)
-
-        // Broadcast join using UDF for "contains"
+        // Join metadata with pivoted measurements
         spark.udf().register("partialMatch",
-                (String pivotStation, String metaStation) -> metaStation.contains(pivotStation),
+                (String pivotStation, String metaStation) -> 
+                    metaStation != null && metaStation.contains(pivotStation),
                 DataTypes.BooleanType);
 
         Dataset<Row> joinedDF = pivotedDF
@@ -92,8 +95,7 @@ public class Main {
                 .filter(expr("partialMatch(StationId, metadataStationId)"))
                 .dropDuplicates("Time", "StationId"); // ensure 1:1 after crossJoin
 
-        // === 8. Final column order ===
-
+        // Final column order
         Dataset<Row> finalDF = joinedDF.select(
                 col("Time"),
                 col("StationId"),
@@ -106,11 +108,14 @@ public class Main {
                 col("NO2"),
                 col("C6H6"));
 
-        // === 9. Show & write output ===
+        // Show sample data and count
+        System.out.println("Final dataset count: " + finalDF.count());
+        finalDF.show(20);
 
-        finalDF.show();
+        // Write output
         finalDF.coalesce(1)
                 .write()
+                .mode("overwrite")
                 .option("header", true)
                 .csv("hdfs:///data/output/aggregate-result");
 
