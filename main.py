@@ -80,7 +80,7 @@ def main():
 
     # Hadoop config
     hadoop_base_target = '/data'
-    container_name = "namenode"
+    container_name = "master"
     staging_dir_in_container = "/tmp/staging_data"
     staging_dir_kaggle = staging_dir_in_container + "/kaggle";
     staging_dir_openmeteo = staging_dir_in_container + "/openmeteo"
