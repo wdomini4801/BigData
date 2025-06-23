@@ -5,6 +5,7 @@ import org.apache.spark.sql.types.*;
 
 import java.util.*;
 import java.util.regex.*;
+import java.util.stream.Collectors;
 
 import static org.apache.spark.sql.functions.*;
 
@@ -34,15 +35,27 @@ public class Main {
                     .option("inferSchema", "false") // Keep as strings initially
                     .csv(filePath);
 
-            // Remove "Time" column from columns list to unpivot station columns only
-            List<String> columns = new ArrayList<>(Arrays.asList(df.columns()));
-            columns.remove("Time");
+            List<String> allColumns = Arrays.asList(df.columns());
+
+            // Filter to find the selected stations subset
+            List<String> selectedColumns = allColumns.stream()
+                .filter(c -> c.equals("Time") || RUN_ONLY.stream().anyMatch(station -> c.startsWith(station)))
+                .collect(Collectors.toList());
+
+            // Limit the dataframe to those found columns
+            Column[] columnSelections = selectedColumns.stream()
+                .map(colName -> expr("`" + colName + "`")) //escape to handle "-" and '.'
+                .toArray(Column[]::new);
+            df = df.select(columnSelections);
 
             // Build stack expression to unpivot columns into (header, value)
             StringBuilder expr = new StringBuilder();
-            expr.append("stack(").append(columns.size());
-            for (String col : columns) {
-                expr.append(", '").append(col).append("', `").append(col).append("`");
+            expr.append("stack(").append(selectedColumns.size() - 1);
+            for (String colName : selectedColumns) {
+                if (!colName.equals("Time")) {
+                    // Properly escape column names containing dots and hyphens
+                    expr.append(", '").append(colName).append("', `").append(colName).append("`");
+                }
             }
             expr.append(") as (header, value)");
 
@@ -86,14 +99,12 @@ public class Main {
 
         // Join metadata with pivoted measurements
         spark.udf().register("partialMatch",
-                (String pivotStation, String metaStation) -> 
-                    metaStation != null && metaStation.contains(pivotStation),
+                (String pivotStation, String metaStation) -> metaStation != null && metaStation.contains(pivotStation),
                 DataTypes.BooleanType);
 
-        Dataset<Row> joinedDF = pivotedDF
-                .crossJoin(metadata)
-                .filter(expr("partialMatch(StationId, metadataStationId)"))
-                .dropDuplicates("Time", "StationId"); // ensure 1:1 after crossJoin
+        Dataset<Row> joinedDF = pivotedDF.join(metadata,
+                col("metadataStationId").contains(col("StationId")),
+                "inner");
 
         // Final column order
         Dataset<Row> finalDF = joinedDF.select(
