@@ -33,5 +33,6 @@ cp /usr/local/spark/conf/spark-defaults.conf.template /usr/local/spark/conf/spar
 export SPARK_HOME=/usr/local/spark
 export PATH=$PATH:$SPARK_HOME/bin
 export LD_LIBRARY_PATH=$PATH:$HADOOP_HOME/lib/native:$LD_LIBRARY_PATH
+# (optional) test run
 $SPARK_HOME/bin/spark-shell --master yarn --deploy-mode=client
 ```
