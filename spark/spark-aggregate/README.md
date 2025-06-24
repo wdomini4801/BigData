@@ -1,6 +1,5 @@
 # Sprawdzona konfiguracja hadoopa ze sparkiem
-
-z tym wywołaniem kontenery dostają miejsce na dysku a nie w pamięci. Ja tu dodaję miejsce na dysku D.
+Obraz na podstawie konfiguracji z ```hjben/hadoop-eco/docker-scripts/compose-up.sh```. W celu uruchomienia sparka dodano odpowiednie porty. Cała konfiguracja dostępne w załączonym pliku ```compose-up.sh```. Z tym wywołaniem kontenery dostają miejsce na dysku a nie w pamięci. Ja tu dodaję miejsce na dysku D.
 
 ``` bash
 # locally
