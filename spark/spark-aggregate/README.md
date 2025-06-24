@@ -36,3 +36,18 @@ export LD_LIBRARY_PATH=$PATH:$HADOOP_HOME/lib/native:$LD_LIBRARY_PATH
 # (optional) test run
 $SPARK_HOME/bin/spark-shell --master yarn --deploy-mode=client
 ```
+
+# Uruchomienie procesów sparka
+
+1. Zbudować jar'a - ```mvn clean package```
+2. Wysłać jar'a na kontener - ```docker cp .\target\spark-aggregate-1.0-SNAPSHOT.jar master:/tmp/```
+3. Na kontenerze uruchomić kolejno procesy:
+```bash
+spark-submit --class org.example.AggregateMetadataJob --master yarn --deploy-mode client /tmp/spark-aggregate-1.0-SNAPSHOT.jar
+```
+```bash
+spark-submit --class org.example.WeatherJoinJob --master yarn --deploy-mode client /tmp/spark-aggregate-1.0-SNAPSHOT.jar
+```
+bez PATH'a dodać ewentualnie ```$SPARK_HOME/bin/spark-shell```
+
+

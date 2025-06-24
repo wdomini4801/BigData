@@ -4,12 +4,11 @@ import org.apache.spark.sql.*;
 import org.apache.spark.sql.types.*;
 
 import java.util.*;
-import java.util.regex.*;
 import java.util.stream.Collectors;
 
 import static org.apache.spark.sql.functions.*;
 
-public class Main {
+public class AggregateMetadataJob {
     public static void main(String[] args) {
 
         SparkSession spark = SparkSession.builder()
@@ -39,13 +38,13 @@ public class Main {
 
             // Filter to find the selected stations subset
             List<String> selectedColumns = allColumns.stream()
-                .filter(c -> c.equals("Time") || RUN_ONLY.stream().anyMatch(station -> c.startsWith(station)))
-                .collect(Collectors.toList());
+                    .filter(c -> c.equals("Time") || RUN_ONLY.stream().anyMatch(station -> c.startsWith(station)))
+                    .collect(Collectors.toList());
 
             // Limit the dataframe to those found columns
             Column[] columnSelections = selectedColumns.stream()
-                .map(colName -> expr("`" + colName + "`")) //escape to handle "-" and '.'
-                .toArray(Column[]::new);
+                    .map(colName -> expr("`" + colName + "`")) // escape to handle "-" and '.'
+                    .toArray(Column[]::new);
             df = df.select(columnSelections);
 
             // Build stack expression to unpivot columns into (header, value)
@@ -63,7 +62,8 @@ public class Main {
                     .withColumn("value", col("value").cast(DataTypes.DoubleType))
                     .filter(col("value").isNotNull()); // Remove null values
 
-            // Extract StationId from header (e.g., "DsJelGorOgin-C6H6-1g" -> "DsJelGorOgin")
+            // Extract StationId from header (e.g., "DsJelGorOgin-C6H6-1g" ->
+            // "DsJelGorOgin")
             Dataset<Row> parsedDF = longDF
                     .withColumn("StationId", regexp_extract(col("header"), "^([^-]+)", 1))
                     .withColumn("pollutant", lit(pollutant))
